@@ -1,4 +1,5 @@
 import 'package:intl/intl.dart';
+import 'candidato_asignacion.dart';
 
 /// Respuesta del servidor al crear incidencia
 class IncidenteResponse {
@@ -65,30 +66,44 @@ class IncidenteDetalle {
   final int idUsuario;
   final int idVehiculo;
   final int idEstado;
+  final int? idCategoria;
+  final int? idPrioridad;
   final String? descripcionUsuario;
   final double latitud;
   final double longitud;
+  final String? resumenIa;
+  final double? clasificacionIaConfianza;
+  final bool requiereRevisionManual;
   final DateTime createdAt;
   final DateTime updatedAt;
   final Map<String, dynamic>? vehiculo;
   final Map<String, dynamic>? estado;
   final Map<String, dynamic>? categoria;
   final Map<String, dynamic>? prioridad;
+  final List<CandidatoAsignacion>? candidatos;
+  final List<Asignacion>? asignaciones;
 
   IncidenteDetalle({
     required this.idIncidente,
     required this.idUsuario,
     required this.idVehiculo,
     required this.idEstado,
+    this.idCategoria,
+    this.idPrioridad,
     this.descripcionUsuario,
     required this.latitud,
     required this.longitud,
+    this.resumenIa,
+    this.clasificacionIaConfianza,
+    this.requiereRevisionManual = false,
     required this.createdAt,
     required this.updatedAt,
     this.vehiculo,
     this.estado,
     this.categoria,
     this.prioridad,
+    this.candidatos,
+    this.asignaciones,
   });
 
   factory IncidenteDetalle.fromJson(Map<String, dynamic> json) {
@@ -96,16 +111,32 @@ class IncidenteDetalle {
       idIncidente: json['id_incidente'] ?? 0,
       idUsuario: json['id_usuario'] ?? 0,
       idVehiculo: json['id_vehiculo'] ?? 0,
-      idEstado: json['estado']?['id_estado'] ?? 1,
+      idEstado: json['estado']?['id_estado'] ?? json['id_estado'] ?? 1,
+      idCategoria: json['id_categoria'],
+      idPrioridad: json['id_prioridad'],
       descripcionUsuario: json['descripcion_usuario'],
       latitud: (json['latitud'] as num).toDouble(),
       longitud: (json['longitud'] as num).toDouble(),
+      resumenIa: json['resumen_ia'],
+      clasificacionIaConfianza:
+          (json['clasificacion_ia_confianza'] as num?)?.toDouble(),
+      requiereRevisionManual: json['requiere_revision_manual'] ?? false,
       createdAt: DateTime.parse(json['created_at'] as String),
-      updatedAt: DateTime.parse(json['updated_at'] as String),
+      updatedAt: DateTime.parse(
+        (json['updated_at'] ?? json['created_at']) as String,
+      ),
       vehiculo: json['vehiculo'],
       estado: json['estado'],
       categoria: json['categoria'],
       prioridad: json['prioridad'],
+      candidatos: (json['candidatos'] as List?)
+          ?.cast<Map<String, dynamic>>()
+          .map((c) => CandidatoAsignacion.fromJson(c))
+          .toList(),
+      asignaciones: (json['asignaciones'] as List?)
+          ?.cast<Map<String, dynamic>>()
+          .map((a) => Asignacion.fromJson(a))
+          .toList(),
     );
   }
 

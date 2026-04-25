@@ -197,10 +197,10 @@ class _TecnicoHomeScreenState extends State<TecnicoHomeScreen> {
                           color: Colors.orange,
                           badge: '3',
                           onTap: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Funcionalidad disponible pronto'),
-                              ),
+                            Navigator.pushNamed(
+                              context,
+                              '/asignacion-detalle',
+                              arguments: 24,
                             );
                           },
                         ),

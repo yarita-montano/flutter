@@ -1,0 +1,84 @@
+class AsignacionResponse {
+  final int idAsignacion;
+  final int idIncidente;
+  final int idTaller;
+  final int? idUsuario;
+  final String estadoAsignacion;
+  final int? etaMinutos;
+  final String? notaTaller;
+  final DateTime createdAt;
+  final IncidenteResponse incidente;
+
+  AsignacionResponse({
+    required this.idAsignacion,
+    required this.idIncidente,
+    required this.idTaller,
+    this.idUsuario,
+    required this.estadoAsignacion,
+    this.etaMinutos,
+    this.notaTaller,
+    required this.createdAt,
+    required this.incidente,
+  });
+
+  factory AsignacionResponse.fromJson(Map<String, dynamic> json) {
+    return AsignacionResponse(
+      idAsignacion: (json['id_asignacion'] ?? 0) as int,
+      idIncidente: (json['id_incidente'] ?? 0) as int,
+      idTaller: (json['id_taller'] ?? 0) as int,
+      idUsuario: (json['id_usuario'] ?? json['id_tecnico']) as int?,
+      estadoAsignacion: ((json['estado'] as Map<String, dynamic>?)?['nombre'] ??
+              'desconocido')
+          as String,
+      etaMinutos: json['eta_minutos'] as int?,
+      notaTaller: json['nota_taller'] as String?,
+      createdAt: DateTime.tryParse((json['created_at'] ?? '').toString()) ??
+          DateTime.fromMillisecondsSinceEpoch(0),
+      incidente: IncidenteResponse.fromJson(
+        (json['incidente'] ?? <String, dynamic>{}) as Map<String, dynamic>,
+      ),
+    );
+  }
+}
+
+class IncidenteResponse {
+  final int idIncidente;
+  final String descripcionUsuario;
+  final String? resumenIa;
+  final double latitud;
+  final double longitud;
+  final String categoria;
+  final String prioridad;
+  final Map<String, dynamic>? usuario;
+  final Map<String, dynamic>? vehiculo;
+
+  IncidenteResponse({
+    required this.idIncidente,
+    required this.descripcionUsuario,
+    this.resumenIa,
+    required this.latitud,
+    required this.longitud,
+    required this.categoria,
+    required this.prioridad,
+    this.usuario,
+    this.vehiculo,
+  });
+
+  factory IncidenteResponse.fromJson(Map<String, dynamic> json) {
+    return IncidenteResponse(
+      idIncidente: (json['id_incidente'] ?? 0) as int,
+      descripcionUsuario: (json['descripcion_usuario'] ?? '') as String,
+      resumenIa: json['resumen_ia'] as String?,
+      latitud: (json['latitud'] as num?)?.toDouble() ?? 0.0,
+      longitud: (json['longitud'] as num?)?.toDouble() ?? 0.0,
+      categoria:
+          ((json['categoria'] as Map<String, dynamic>?)?['nombre'] ?? 'Desconocida')
+              as String,
+      prioridad:
+          ((json['prioridad'] as Map<String, dynamic>?)?['nivel'] ?? 'normal')
+              as String,
+      usuario: json['usuario'] as Map<String, dynamic>?,
+      vehiculo: json['vehiculo'] as Map<String, dynamic>?,
+    );
+  }
+}

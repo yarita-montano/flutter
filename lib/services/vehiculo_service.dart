@@ -2,9 +2,10 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
+import '../config/api_config.dart';
 
 class VehiculoService {
-  static const String baseUrl = "http://10.0.2.2:8000";
+  static const String baseUrl = ApiConfig.baseUrl;
   
   // ============ OBTENER TOKEN CON DEBUG ============
   Future<String?> _getToken() async {

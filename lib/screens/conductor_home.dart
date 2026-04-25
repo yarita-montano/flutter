@@ -172,7 +172,10 @@ class _ConductorHomeScreenState extends State<ConductorHomeScreen> {
                             final resultado = await vehiculoService.listarMisVehiculos();
                             
                             if (resultado['success']) {
-                              final vehiculos = resultado['vehiculos'] ?? [];
+                              final vehiculos = List<Map<String, dynamic>>.from(
+                                (resultado['vehiculos'] as List? ?? [])
+                                    .map((v) => Map<String, dynamic>.from(v as Map)),
+                              );
                               
                               if (!mounted) return;
                               

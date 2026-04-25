@@ -40,6 +40,7 @@ dependencies:
 
   # Persistent storage for local data
   shared_preferences: ^2.2.2
+  flutter_secure_storage: ^9.2.2
 
   # GPS / Geolocalización
   geolocator: ^13.0.1
@@ -50,8 +51,8 @@ dependencies:
 
   # Evidencias (CU-06): foto, audio, archivos temporales
   image_picker: ^1.0.7
-  record: ^5.0.4
-  audioplayers: ^5.2.1
+  record: ^6.0.0
+  audioplayers: ^6.0.0
   path_provider: ^2.1.2
 
 dev_dependencies:

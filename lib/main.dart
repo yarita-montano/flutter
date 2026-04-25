@@ -2,29 +2,38 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/login_screen.dart';
 import 'screens/conductor_home.dart';
-import 'screens/tecnico_home.dart';
+import 'screens/tecnico_dashboard_screen.dart';
 import 'screens/mis_vehiculos_screen.dart';
 import 'screens/registrar_vehiculo_screen.dart';
-import 'screens/editar_vehiculo_screen.dart';
 import 'screens/vehiculo_debug_screen.dart';
 import 'screens/perfil_screen.dart';
 import 'screens/reportar_emergencia_screen.dart';
 import 'screens/historial_emergencias_screen.dart';
-import 'screens/subir_evidencia_screen.dart';
+import 'screens/asignacion_detalle_screen.dart';
 import 'services/auth_service.dart';
+import 'services/tecnico_auth_service.dart';
+import 'utils/app_logger.dart';
 
 void main() async {
   // Inicializar WidgetsBinding para operaciones async en main
   WidgetsFlutterBinding.ensureInitialized();
   
+  AppLogger.separator(title: 'INICIANDO APLICACIÓN');
+  
   // Pre-inicializar SharedPreferences
   try {
+    AppLogger.info('Inicializando SharedPreferences...', tag: 'MAIN');
     await SharedPreferences.getInstance();
-    debugPrint('✅ SharedPreferences inicializado correctamente');
+    AppLogger.success('SharedPreferences inicializado correctamente', tag: 'MAIN');
   } catch (e) {
-    debugPrint('❌ Error al inicializar SharedPreferences: $e');
+    AppLogger.error(
+      'Error al inicializar SharedPreferences',
+      tag: 'MAIN',
+      error: e,
+    );
   }
   
+  AppLogger.info('Iniciando aplicación...', tag: 'MAIN');
   runApp(const MyApp());
 }
 
@@ -43,7 +52,8 @@ class MyApp extends StatelessWidget {
       routes: {
         '/login': (context) => const LoginScreen(),
         '/conductor-home': (context) => const ConductorHomeScreen(),
-        '/tecnico-home': (context) => const TecnicoHomeScreen(),
+        '/tecnico-home': (context) => const TecnicoDashboardScreen(),
+        '/tecnico-dashboard': (context) => const TecnicoDashboardScreen(),
         '/mis-vehiculos': (context) => MisVehiculosScreen(),
         '/registrar-vehiculo': (context) => RegistrarVehiculoScreen(),
         '/debug-vehiculos': (context) => VehiculoDebugScreen(),
@@ -52,9 +62,9 @@ class MyApp extends StatelessWidget {
             const ReportarEmergenciaScreen(vehiculos: []),
         '/historial-emergencias': (context) =>
             const HistorialEmergenciasScreen(),
-        '/evidencias': (context) {
-          final id = ModalRoute.of(context)!.settings.arguments as int;
-          return SubirEvidenciaScreen(idIncidente: id);
+        '/asignacion-detalle': (context) {
+          final id = ModalRoute.of(context)?.settings.arguments as int? ?? 0;
+          return AsignacionDetalleScreen(idAsignacion: id);
         },
       },
     );
@@ -70,50 +80,67 @@ class _InitialScreen extends StatefulWidget {
 
 class _InitialScreenState extends State<_InitialScreen> {
   final AuthService _authService = AuthService();
+  final TecnicoAuthService _tecnicoAuthService = TecnicoAuthService();
 
   @override
   void initState() {
     super.initState();
-    debugPrint('🚀 Iniciando aplicación...');
+    AppLogger.info('Iniciando verificación de autenticación...', tag: 'INITIAL_SCREEN');
     _checkAuthentication();
   }
 
   Future<void> _checkAuthentication() async {
     try {
+      AppLogger.debug('Esperando 500ms antes de verificar...', tag: 'INITIAL_SCREEN');
       await Future.delayed(const Duration(milliseconds: 500));
       
-      debugPrint('🔍 Verificando autenticación...');
+      AppLogger.info('Verificando si hay sesión activa...', tag: 'INITIAL_SCREEN');
       
       final isAuthenticated = await _authService.isAuthenticated();
-      debugPrint('📋 ¿Autenticado?: $isAuthenticated');
+      AppLogger.info('Estado de autenticación: ${isAuthenticated ? 'Autenticado ✅' : 'No autenticado ❌'}', tag: 'INITIAL_SCREEN');
 
-      if (!mounted) return;
+      if (!mounted) {
+        AppLogger.warning('El widget fue desmontado, canceling navegación', tag: 'INITIAL_SCREEN');
+        return;
+      }
 
       if (isAuthenticated) {
         final userRole = await _authService.getUserRole();
         final userName = await _authService.getUserName();
-        
-        debugPrint('👤 Usuario: $userName, Rol: $userRole');
-        
+        final userId = await _authService.getUserId();
+        final tecnicoLogged = await _tecnicoAuthService.isTecnicoLoggedIn();
+
+        AppLogger.table('Información de Usuario', {
+          'Nombre': userName ?? 'N/A',
+          'ID': userId ?? 'N/A',
+          'Rol': userRole ?? 'N/A',
+          'Token Técnico': tecnicoLogged ? 'Sí' : 'No',
+        }, tag: 'INITIAL_SCREEN');
+
         if (userRole == '1') {
-          debugPrint('✅ Navegando a: Conductor Home');
+          AppLogger.success('Navegando a: Conductor Home', tag: 'INITIAL_SCREEN');
           Navigator.of(context).pushReplacementNamed('/conductor-home');
         } else if (userRole == '3') {
-          debugPrint('✅ Navegando a: Técnico Home');
-          Navigator.of(context).pushReplacementNamed('/tecnico-home');
+          AppLogger.success('Navegando a: Técnico Dashboard', tag: 'INITIAL_SCREEN');
+          Navigator.of(context).pushReplacementNamed('/tecnico-dashboard');
         } else {
-          debugPrint('✅ Navegando a: Login');
+          AppLogger.warning('Rol desconocido: $userRole', tag: 'INITIAL_SCREEN');
           Navigator.of(context).pushReplacementNamed('/login');
         }
       } else {
-        debugPrint('✅ Navegando a: Login');
+        AppLogger.info('Sin sesión activa, navegando a Login', tag: 'INITIAL_SCREEN');
         Navigator.of(context).pushReplacementNamed('/login');
       }
     } catch (e, stackTrace) {
-      debugPrint('❌ Error al verificar autenticación: $e');
-      debugPrint('📍 StackTrace: $stackTrace');
+      AppLogger.error(
+        'Error crítico al verificar autenticación',
+        tag: 'INITIAL_SCREEN',
+        error: e,
+        stackTrace: stackTrace,
+      );
       
       if (mounted) {
+        AppLogger.info('Navegando a Login como fallback', tag: 'INITIAL_SCREEN');
         Navigator.of(context).pushReplacementNamed('/login');
       }
     }

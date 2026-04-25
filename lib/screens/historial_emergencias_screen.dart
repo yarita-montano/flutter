@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../services/incidente_service.dart';
 import '../models/incidente.dart';
+import '../models/candidato_asignacion.dart';
+import 'subir_evidencia_screen.dart';
 
 class HistorialEmergenciasScreen extends StatefulWidget {
   const HistorialEmergenciasScreen({super.key});
@@ -188,42 +190,280 @@ class _HistorialEmergenciasScreenState
     );
   }
 
-  void _showDetailDialog(BuildContext context, IncidenteDetalle inc) {
+  void _showDetailDialog(BuildContext context, IncidenteDetalle inicial) {
+    IncidenteDetalle inc = inicial;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('#${inc.idIncidente} - Detalles'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _detailRow('Estado:', inc.getEstadoNombre()),
-              _detailRow('Vehículo:', '${inc.getMarca()} ${inc.getPlaca()}'),
-              _detailRow('Categoría:', inc.getCategoriaNombre()),
-              _detailRow('Prioridad:', inc.getNivelPrioridad()),
-              _detailRow('Ubicación:', inc.getUbicacion()),
-              _detailRow('Fecha:', inc.getFechaFormato()),
-              if (inc.descripcionUsuario != null) ...[
-                const SizedBox(height: 12),
-                const Text(
-                  'Descripción:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+      builder: (dialogCtx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          Future<void> analizarIA() async {
+            showDialog(
+              context: ctx,
+              barrierDismissible: false,
+              builder: (_) => const AlertDialog(
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('Analizando evidencias con IA...'),
+                    SizedBox(height: 8),
+                    Text(
+                      'Puede tardar unos segundos',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(inc.descripcionUsuario!),
-              ],
+              ),
+            );
+
+            final resultado = await incidenteService.analizarConIA(inc.idIncidente);
+
+            if (!mounted) return;
+            Navigator.pop(ctx); // cerrar loading
+
+            if (resultado['success']) {
+              final actualizado = resultado['incidente'] as IncidenteDetalle;
+              setDialogState(() => inc = actualizado);
+              _cargarIncidencias();
+              ScaffoldMessenger.of(ctx).showSnackBar(
+                const SnackBar(
+                  content: Text('✨ Análisis IA completado'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            } else {
+              ScaffoldMessenger.of(ctx).showSnackBar(
+                SnackBar(
+                  content: Text(resultado['error'] ?? 'Error IA'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+              if (resultado['code'] == 'AUTH_EXPIRED') {
+                Navigator.of(ctx).pushReplacementNamed('/login');
+              }
+            }
+          }
+
+          return AlertDialog(
+            title: Text('#${inc.idIncidente} - Detalles'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _detailRow('Estado:', inc.getEstadoNombre()),
+                  _detailRow('Vehículo:', '${inc.getMarca()} ${inc.getPlaca()}'),
+                  _detailRow('Categoría:', inc.getCategoriaNombre()),
+                  _detailRow('Prioridad:', inc.getNivelPrioridad()),
+                  _detailRow('Ubicación:', inc.getUbicacion()),
+                  _detailRow('Fecha:', inc.getFechaFormato()),
+                  if (inc.descripcionUsuario != null) ...[
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Descripción:',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(inc.descripcionUsuario!),
+                  ],
+                  if (inc.resumenIa != null) ...[
+                    const Divider(height: 28),
+                    Row(
+                      children: [
+                        const Icon(Icons.auto_awesome,
+                            color: Colors.deepPurple, size: 20),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Análisis IA',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                        const Spacer(),
+                        if (inc.clasificacionIaConfianza != null)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: _colorConfianza(
+                                  inc.clasificacionIaConfianza!),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              '${(inc.clasificacionIaConfianza! * 100).toStringAsFixed(0)}%',
+                              style: const TextStyle(
+                                  color: Colors.white, fontSize: 11),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.deepPurple.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border:
+                            Border.all(color: Colors.deepPurple.shade200),
+                      ),
+                      child: Text(
+                        inc.resumenIa!,
+                        style: const TextStyle(fontSize: 13, height: 1.4),
+                      ),
+                    ),
+                    if (inc.requiereRevisionManual) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade100,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.warning_amber,
+                                color: Colors.orange, size: 18),
+                            SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Baja confianza — un operador revisará manualmente.',
+                                style: TextStyle(fontSize: 11),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                  if (inc.asignaciones != null &&
+                      inc.asignaciones!.isNotEmpty) ...[
+                    const Divider(height: 28),
+                    Row(
+                      children: [
+                        const Icon(Icons.build_circle,
+                            color: Colors.blue, size: 20),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Asignación',
+                          style: TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    _buildAsignacionCard(inc.asignaciones!.first),
+                  ],
+                  if (inc.idCategoria == null) ...[
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        icon: const Icon(Icons.auto_awesome),
+                        label: const Text('Analizar con IA'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.deepPurple,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        onPressed: analizarIA,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cerrar'),
+              ),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => SubirEvidenciaScreen(
+                        idIncidente: inc.idIncidente,
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.camera_alt, size: 18),
+                label: const Text('Evidencias'),
+              ),
             ],
+          );
+        },
+      ),
+    );
+  }
+
+  Color _colorAsignacion(String estado) {
+    switch (estado.toLowerCase()) {
+      case 'aceptada':
+      case 'en_camino':
+        return Colors.green;
+      case 'rechazada':
+        return Colors.red;
+      case 'completada':
+        return Colors.blue;
+      case 'pendiente':
+      default:
+        return Colors.orange;
+    }
+  }
+
+  Widget _buildAsignacionCard(Asignacion a) {
+    final color = _colorAsignacion(a.estado.nombre);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            a.getMensajeEstado(),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+              color: color,
+            ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cerrar'),
-          ),
+          if (a.notaTaller != null && a.notaTaller!.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              '💬 "${a.notaTaller!}"',
+              style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
+            ),
+          ],
+          if (a.taller.telefono != null) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const Icon(Icons.phone, size: 14, color: Colors.grey),
+                const SizedBox(width: 4),
+                Text(
+                  a.taller.telefono!,
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  Color _colorConfianza(double c) {
+    if (c >= 0.8) return Colors.green;
+    if (c >= 0.6) return Colors.orange;
+    return Colors.red;
   }
 
   Widget _detailRow(String label, String value) {

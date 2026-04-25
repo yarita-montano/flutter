@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../services/incidente_service.dart';
-import '../models/incidente.dart';
 import 'subir_evidencia_screen.dart';
 
 class ReportarEmergenciaScreen extends StatefulWidget {
@@ -23,7 +22,6 @@ class _ReportarEmergenciaScreenState extends State<ReportarEmergenciaScreen> {
   double? latitud;
   double? longitud;
   bool obteniendo = false;
-  bool reportando = false;
   String? ubicacionTexto;
   String? errorGeneral;
 
@@ -78,7 +76,7 @@ class _ReportarEmergenciaScreenState extends State<ReportarEmergenciaScreen> {
     setState(() => obteniendo = false);
   }
 
-  void _reportarEmergencia() async {
+  void _irASubirEvidencia() {
     if (!_formKey.currentState!.validate()) return;
 
     if (vehiculoSeleccionado == null) {
@@ -101,89 +99,19 @@ class _ReportarEmergenciaScreenState extends State<ReportarEmergenciaScreen> {
       return;
     }
 
-    setState(() {
-      reportando = true;
-      errorGeneral = null;
-    });
-
-    final resultado = await incidenteService.crearIncidencia(
-      idVehiculo: vehiculoSeleccionado!,
-      descripcionUsuario: _descripcionController.text.trim(),
-      latitud: latitud!,
-      longitud: longitud!,
-    );
-
-    if (!mounted) return;
-
-    if (resultado['success']) {
-      final incidente = resultado['incidente'] as IncidenteResponse;
-
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          backgroundColor: Colors.green.shade50,
-          title: const Row(
-            children: [
-              Icon(Icons.check_circle, color: Colors.green, size: 28),
-              SizedBox(width: 12),
-              Expanded(child: Text('¡Emergencia Reportada!')),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('✅ Incidencia #${incidente.idIncidente}'),
-              const SizedBox(height: 8),
-              const Text('Técnicos en camino...'),
-              const SizedBox(height: 8),
-              Text(
-                'Estado: ${incidente.getEstadoNombre()}',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Ubicación:\n${incidente.getUbicacion()}',
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                Navigator.pop(context, incidente);
-              },
-              child: const Text('Cerrar'),
-            ),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.pop(context);
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => SubirEvidenciaScreen(
-                      idIncidente: incidente.idIncidente,
-                    ),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.camera_alt),
-              label: const Text('Agregar evidencias'),
-            ),
-          ],
+    // Solo navegar a SubirEvidenciaScreen en modo NUEVO REPORTE
+    // La creación del incidente ocurre allá al presionar "REPORTAR INCIDENTE"
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SubirEvidenciaScreen(
+          idVehiculo: vehiculoSeleccionado!,
+          descripcionUsuario: _descripcionController.text.trim(),
+          latitud: latitud!,
+          longitud: longitud!,
         ),
-      );
-    } else {
-      if (resultado['code'] == 'AUTH_EXPIRED') {
-        Navigator.of(context).pushReplacementNamed('/login');
-      } else {
-        setState(() => errorGeneral = resultado['error']);
-      }
-    }
-
-    setState(() => reportando = false);
+      ),
+    );
   }
 
   @override
@@ -343,27 +271,25 @@ class _ReportarEmergenciaScreenState extends State<ReportarEmergenciaScreen> {
                           ),
                         ),
                       ),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: obteniendo || reportando
-                            ? null
-                            : _obtenerUbicacion,
-                        icon: obteniendo
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2),
-                              )
-                            : const Icon(Icons.location_on),
-                        label: Text(
-                          obteniendo
-                              ? 'Obteniendo...'
-                              : 'Obtener Mi Ubicación',
-                        ),
-                      ),
-                    ),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: obteniendo ? null : _obtenerUbicacion,
+                  icon: obteniendo
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2),
+                        )
+                      : const Icon(Icons.location_on),
+                  label: Text(
+                    obteniendo
+                        ? 'Obteniendo...'
+                        : 'Obtener Mi Ubicación',
+                  ),
+                ),
+              ),
                   ],
                 ),
               ),
@@ -373,28 +299,16 @@ class _ReportarEmergenciaScreenState extends State<ReportarEmergenciaScreen> {
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton.icon(
-                  onPressed: reportando ? null : _reportarEmergencia,
+                  onPressed: _irASubirEvidencia,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.red,
                     disabledBackgroundColor: Colors.red.shade300,
                   ),
-                  icon: reportando
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor:
-                                AlwaysStoppedAnimation(Colors.white),
-                          ),
-                        )
-                      : const Icon(Icons.emergency,
-                          size: 28, color: Colors.white),
-                  label: Text(
-                    reportando
-                        ? '⏳ Reportando...'
-                        : '🚨 ¡AUXILIO! REPORTAR AHORA',
-                    style: const TextStyle(
+                  icon: const Icon(Icons.upload_file,
+                      size: 28, color: Colors.white),
+                  label: const Text(
+                    '📎 SUBIR EVIDENCIA',
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
@@ -408,7 +322,7 @@ class _ReportarEmergenciaScreenState extends State<ReportarEmergenciaScreen> {
                 width: double.infinity,
                 height: 50,
                 child: OutlinedButton.icon(
-                  onPressed: reportando ? null : () => Navigator.pop(context),
+                  onPressed: () => Navigator.pop(context),
                   icon: const Icon(Icons.close),
                   label: const Text('Cancelar'),
                 ),

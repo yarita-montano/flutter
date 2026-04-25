@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../utils/app_logger.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -13,18 +14,28 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
+  static const String _tag = 'LoginScreen';
   bool _isLoading = false;
   String? _errorMessage;
   bool _obscurePassword = true;
 
   @override
+  void initState() {
+    super.initState();
+    AppLogger.info('Pantalla de Login iniciada', tag: _tag);
+  }
+
+  @override
   void dispose() {
+    AppLogger.debug('Limpiando controladores de login', tag: _tag);
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
   Future<void> _handleLogin() async {
+    AppLogger.separator(title: 'INTENTANDO LOGIN MANUAL');
+    
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -33,7 +44,11 @@ class _LoginScreenState extends State<LoginScreen> {
     final email = _emailController.text.trim();
     final password = _passwordController.text;
 
+    AppLogger.info('Email ingresado: $email', tag: _tag);
+    AppLogger.info('Longitud de contraseña: ${password.length} caracteres', tag: _tag);
+
     if (email.isEmpty || password.isEmpty) {
+      AppLogger.warning('Campos vacíos detectados', tag: _tag);
       setState(() {
         _errorMessage = 'Por favor completa todos los campos';
         _isLoading = false;
@@ -41,28 +56,38 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
+    AppLogger.info('Campos válidos, iniciando solicitud de login...', tag: _tag);
     final result = await _authService.login(email, password);
 
-    if (!mounted) return;
+    if (!mounted) {
+      AppLogger.warning('Widget desmontado, cancelando actualización de UI', tag: _tag);
+      return;
+    }
 
     if (result['success']) {
       final userData = result['data']['usuario'];
       final userRole = userData['id_rol'].toString();
 
+      AppLogger.info('Login exitoso, rol: $userRole', tag: _tag);
+
       // Route based on user role
       if (userRole == '1') {
         // Cliente (Conductor)
+        AppLogger.success('Navegando a Conductor Home', tag: _tag);
         Navigator.of(context).pushReplacementNamed('/conductor-home');
       } else if (userRole == '3') {
         // Técnico
-        Navigator.of(context).pushReplacementNamed('/tecnico-home');
+        AppLogger.success('Navegando a Técnico Dashboard', tag: _tag);
+        Navigator.of(context).pushReplacementNamed('/tecnico-dashboard');
       } else {
+        AppLogger.warning('Rol no autorizado: $userRole', tag: _tag);
         setState(() {
           _errorMessage = 'Rol no autorizado para esta aplicación';
           _isLoading = false;
         });
       }
     } else {
+      AppLogger.error('Error en login: ${result['error']}', tag: _tag);
       setState(() {
         _errorMessage = result['error'];
         _isLoading = false;
@@ -72,6 +97,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // Auto-login para pruebas: Cliente (Conductor)
   Future<void> _autoLoginConductor() async {
+    AppLogger.separator(title: 'AUTO-LOGIN CONDUCTOR');
     await _handleLoginWithCredentials(
       'conductor@ejemplo.com',
       'cliente123!',
@@ -80,6 +106,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // Auto-login para pruebas: Técnico
   Future<void> _autoLoginTecnico() async {
+    AppLogger.separator(title: 'AUTO-LOGIN TÉCNICO');
     await _handleLoginWithCredentials(
       'tecnico.juan@taller.com',
       'tecnico123!',
@@ -88,6 +115,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // Método auxiliar para login con credenciales específicas
   Future<void> _handleLoginWithCredentials(String email, String password) async {
+    AppLogger.info('Auto-login con: $email', tag: _tag);
+    
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -97,18 +126,26 @@ class _LoginScreenState extends State<LoginScreen> {
 
     final result = await _authService.login(email, password);
 
-    if (!mounted) return;
+    if (!mounted) {
+      AppLogger.warning('Widget desmontado durante auto-login', tag: _tag);
+      return;
+    }
 
     if (result['success']) {
       final userData = result['data']['usuario'];
       final userRole = userData['id_rol'].toString();
 
+      AppLogger.success('Auto-login exitoso', tag: _tag);
+
       if (userRole == '1') {
+        AppLogger.info('Navegando a Conductor Home', tag: _tag);
         Navigator.of(context).pushReplacementNamed('/conductor-home');
       } else if (userRole == '3') {
-        Navigator.of(context).pushReplacementNamed('/tecnico-home');
+        AppLogger.info('Navegando a Técnico Dashboard', tag: _tag);
+        Navigator.of(context).pushReplacementNamed('/tecnico-dashboard');
       }
     } else {
+      AppLogger.error('Auto-login falló: ${result['error']}', tag: _tag);
       setState(() {
         _errorMessage = result['error'];
         _isLoading = false;
@@ -118,14 +155,17 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // Limpiar datos de prueba
   Future<void> _clearAllData() async {
+    AppLogger.info('Limpiando todos los datos de sesión...', tag: _tag);
     try {
       await _authService.logout();
+      AppLogger.success('Datos limpios exitosamente', tag: _tag);
       setState(() {
         _emailController.clear();
         _passwordController.clear();
         _errorMessage = 'Datos limpios ✅';
       });
     } catch (e) {
+      AppLogger.error('Error al limpiar datos: $e', tag: _tag, error: e);
       setState(() {
         _errorMessage = 'Error al limpiar: $e';
       });
@@ -414,6 +454,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               onPressed: _isLoading
                                   ? null
                                   : () {
+                                      AppLogger.debug('Rellenando campos con credenciales de cliente', tag: _tag);
                                       setState(() {
                                         _emailController.text = 'conductor@ejemplo.com';
                                         _passwordController.text = 'cliente123!';
@@ -435,6 +476,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               onPressed: _isLoading
                                   ? null
                                   : () {
+                                      AppLogger.debug('Rellenando campos con credenciales de técnico', tag: _tag);
                                       setState(() {
                                         _emailController.text = 'tecnico.juan@taller.com';
                                         _passwordController.text = 'tecnico123!';
@@ -465,24 +507,29 @@ class _LoginScreenState extends State<LoginScreen> {
         onSelected: (value) async {
           switch (value) {
             case 'conductor':
+              AppLogger.debug('Opción de menú: Auto-login Cliente', tag: _tag);
               await _autoLoginConductor();
               break;
             case 'tecnico':
+              AppLogger.debug('Opción de menú: Auto-login Técnico', tag: _tag);
               await _autoLoginTecnico();
               break;
             case 'fill_conductor':
+              AppLogger.debug('Opción de menú: Rellenar Cliente', tag: _tag);
               setState(() {
                 _emailController.text = 'conductor@ejemplo.com';
                 _passwordController.text = 'cliente123!';
               });
               break;
             case 'fill_tecnico':
+              AppLogger.debug('Opción de menú: Rellenar Técnico', tag: _tag);
               setState(() {
                 _emailController.text = 'tecnico.juan@taller.com';
                 _passwordController.text = 'tecnico123!';
               });
               break;
             case 'clear':
+              AppLogger.debug('Opción de menú: Limpiar datos', tag: _tag);
               await _clearAllData();
               break;
           }

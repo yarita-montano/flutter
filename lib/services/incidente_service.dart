@@ -4,12 +4,12 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:geolocator/geolocator.dart';
+import '../config/api_config.dart';
 import '../models/incidente.dart';
 import '../models/evidencia.dart';
 
 class IncidenteService {
-  // En emulador Android, 10.0.2.2 apunta al localhost de la máquina host
-  static const String baseUrl = "http://10.0.2.2:8000";
+  static const String baseUrl = ApiConfig.baseUrl;
 
   Future<String?> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
@@ -257,6 +257,58 @@ class IncidenteService {
     }
   }
 
+  /// 🤖 ANALIZAR INCIDENTE CON IA (Gemini)
+  Future<Map<String, dynamic>> analizarConIA(int idIncidente) async {
+    try {
+      print('[IA] 🤖 Analizando incidente #$idIncidente...');
+
+      final token = await _getToken();
+      if (token == null) {
+        return {'success': false, 'error': 'No autenticado'};
+      }
+
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/incidencias/$idIncidente/analizar-ia'),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+          )
+          .timeout(const Duration(seconds: 45));
+
+      print('[IA] Status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        final incidente = IncidenteDetalle.fromJson(data);
+        print('[IA] ✅ Análisis completado (confianza: '
+            '${incidente.clasificacionIaConfianza})');
+        return {'success': true, 'incidente': incidente};
+      } else if (response.statusCode == 401) {
+        return {
+          'success': false,
+          'error': 'Sesión expirada',
+          'code': 'AUTH_EXPIRED',
+        };
+      } else if (response.statusCode == 404) {
+        return {'success': false, 'error': 'Incidente no encontrado'};
+      } else if (response.statusCode == 502) {
+        return {
+          'success': false,
+          'error': 'Servicio de IA no disponible. Intenta más tarde.',
+        };
+      }
+
+      return {'success': false, 'error': 'Error al analizar: ${response.statusCode}'};
+    } on TimeoutException catch (_) {
+      return {'success': false, 'error': 'IA tardó demasiado. Intenta de nuevo.'};
+    } catch (e) {
+      print('[IA] ❌ Exception: $e');
+      return {'success': false, 'error': 'Error: $e'};
+    }
+  }
+
   /// 📍 OBTENER UBICACIÓN ACTUAL
   Future<Map<String, double>?> obtenerUbicacionActual() async {
     try {
@@ -268,11 +320,24 @@ class IncidenteService {
         return null;
       }
 
-      final posicion = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-        ),
-      );
+      Position? posicion;
+
+      try {
+        posicion = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.medium,
+            timeLimit: Duration(seconds: 10),
+          ),
+        ).timeout(const Duration(seconds: 12));
+      } catch (e) {
+        print('[GPS] ⚠️ getCurrentPosition falló ($e), probando lastKnown...');
+        posicion = await Geolocator.getLastKnownPosition();
+      }
+
+      if (posicion == null) {
+        print('[GPS] ❌ Sin ubicación disponible');
+        return null;
+      }
 
       print('[GPS] ✅ ${posicion.latitude}, ${posicion.longitude}');
       return {
@@ -312,6 +377,52 @@ class IncidenteService {
     } catch (e) {
       print('[GPS] ❌ Error: $e');
       return false;
+    }
+  }
+
+  /// 🏪 CAMBIAR TALLER SELECCIONADO
+  Future<Map<String, dynamic>> cambiarTaller({
+    required int idIncidente,
+    required int idCandidato,
+  }) async {
+    try {
+      print('[TALLER] 🔄 Cambiando taller... Candidato: $idCandidato');
+
+      final token = await _getToken();
+      if (token == null) {
+        return {'success': false, 'error': 'No autenticado'};
+      }
+
+      final response = await http
+          .put(
+            Uri.parse('$baseUrl/incidencias/$idIncidente/cambiar-taller'),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({'id_candidato': idCandidato}),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      print('[TALLER] Status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        print('[TALLER] ✅ Taller cambiado correctamente');
+        return {'success': true, 'message': 'Taller actualizado'};
+      } else if (response.statusCode == 401) {
+        return {
+          'success': false,
+          'error': 'Sesión expirada',
+          'code': 'AUTH_EXPIRED',
+        };
+      } else if (response.statusCode == 404) {
+        return {'success': false, 'error': 'Incidente o candidato no encontrado'};
+      }
+
+      return {'success': false, 'error': 'Error al cambiar taller'};
+    } catch (e) {
+      print('[TALLER] ❌ Exception: $e');
+      return {'success': false, 'error': 'Error: $e'};
     }
   }
 }

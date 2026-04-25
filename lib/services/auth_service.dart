@@ -1,61 +1,145 @@
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
+import '../config/api_config.dart';
+import '../utils/app_logger.dart';
 
 class AuthService {
-  // ✅ Manejo automático de emulador y dispositivo físico
-  static const bool isEmulator = true; // Cambiar a false para dispositivo físico
-  
-  // URLs para diferentes ambientes
-  static const String _emulatorUrl = 'http://10.0.2.2:8000'; // Android Emulator
-  static const String _deviceUrl = 'http://192.168.1.5:8000'; // Cambiar IP según tu red local
-  
-  // URL base que se selecciona automáticamente
-  static const String baseUrl = isEmulator ? _emulatorUrl : _deviceUrl;
+  static const String baseUrl = ApiConfig.baseUrl;
+  static const String _tag = 'AuthService';
 
   // Login with email and password
   Future<Map<String, dynamic>> login(String email, String password) async {
+    AppLogger.separator(title: 'INICIANDO LOGIN');
+    AppLogger.auth('Intento de login con: $email', tag: _tag);
+    
     try {
-      debugPrint('🔐 Intentando login con: $email');
+      final url = '$baseUrl/usuarios/login';
+      final body = {
+        'email': email,
+        'password': password,
+      };
+      
+      AppLogger.httpRequest('POST', url, 
+        tag: _tag,
+        body: body,
+        headers: {'Content-Type': 'application/json'},
+      );
+      
+      final startTime = DateTime.now();
       
       final response = await http
           .post(
-            Uri.parse('$baseUrl/usuarios/login'),
+            Uri.parse(url),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'email': email,
-              'password': password,
-            }),
+            body: jsonEncode(body),
           )
-          .timeout(const Duration(seconds: 30));
+          .timeout(const Duration(seconds: 30), onTimeout: () {
+            AppLogger.error(
+              'Timeout esperando respuesta del servidor (30s)',
+              tag: _tag,
+            );
+            AppLogger.info(
+              'URL intentado: $url',
+              tag: _tag,
+            );
+            AppLogger.info(
+              'Verifica que el API está corriendo en esa dirección',
+              tag: _tag,
+            );
+            throw TimeoutException(
+              'No se recibió respuesta en 30 segundos',
+              const Duration(seconds: 30),
+            );
+          });
 
-      debugPrint('📊 Response status: ${response.statusCode}');
+      final duration = DateTime.now().difference(startTime);
+      
+      AppLogger.httpResponse(
+        'POST',
+        url,
+        response.statusCode,
+        tag: _tag,
+        duration: duration,
+        body: response.body.length > 500 
+          ? '${response.body.substring(0, 500)}...'
+          : response.body,
+      );
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        debugPrint('✅ Login exitoso');
-        await _saveUserData(data);
-        return {
-          'success': true,
-          'data': data,
-        };
+        try {
+          final data = jsonDecode(response.body);
+          AppLogger.success('Login exitoso para: $email', tag: _tag);
+          AppLogger.info('Guardando datos del usuario...', tag: _tag);
+          
+          await _saveUserData(data);
+          
+          AppLogger.success('Datos del usuario guardados correctamente', tag: _tag);
+          
+          return {
+            'success': true,
+            'data': data,
+          };
+        } catch (parseError) {
+          AppLogger.error(
+            'Error al parsear respuesta JSON: $parseError',
+            tag: _tag,
+            error: parseError,
+          );
+          return {
+            'success': false,
+            'error': 'Error al procesar respuesta del servidor',
+          };
+        }
       } else {
+        AppLogger.warning(
+          'Status code no exitoso: ${response.statusCode}',
+          tag: _tag,
+        );
+        
         try {
           final errorData = jsonDecode(response.body);
+          final errorMessage = errorData['detail'] ?? 'Error en login';
+          AppLogger.error('Error del servidor: $errorMessage', tag: _tag);
+          
           return {
             'success': false,
-            'error': errorData['detail'] ?? 'Error en login',
+            'error': errorMessage,
           };
         } catch (e) {
+          final errorMsg = 'Error del servidor: ${response.statusCode}';
+          AppLogger.error(errorMsg, tag: _tag);
+          
           return {
             'success': false,
-            'error': 'Error del servidor: ${response.statusCode}',
+            'error': errorMsg,
           };
         }
       }
+    } on TimeoutException catch (e) {
+      AppLogger.error(
+        'TimeoutException: No se recibió respuesta del servidor',
+        tag: _tag,
+        error: e,
+      );
+      AppLogger.info('Verifica:',  tag: _tag);
+      AppLogger.info('  1. El API está corriendo en $baseUrl',  tag: _tag);
+      AppLogger.info('  2. La red está conectada',  tag: _tag);
+      AppLogger.info('  3. El firewall permite la conexión',  tag: _tag);
+      
+      return {
+        'success': false,
+        'error': 'Timeout: No se puede conectar con el servidor. Intenta de nuevo.',
+      };
     } catch (e) {
-      debugPrint('❌ Error en login: $e');
+      AppLogger.error(
+        'Error inesperado en login',
+        tag: _tag,
+        error: e,
+      );
+      
       return {
         'success': false,
         'error': 'Error de conexión: $e',
@@ -65,21 +149,61 @@ class AuthService {
 
   // Save user data to SharedPreferences
   Future<void> _saveUserData(Map<String, dynamic> data) async {
+    AppLogger.info('Iniciando guardado de datos del usuario...', tag: _tag);
+    
     try {
       final prefs = await SharedPreferences.getInstance();
 
+      // Validar que existan los datos necesarios
+      if (!data.containsKey('access_token')) {
+        throw Exception('Token no encontrado en respuesta');
+      }
+      
+      if (!data.containsKey('usuario')) {
+        throw Exception('Datos del usuario no encontrados en respuesta');
+      }
+
+      final usuario = data['usuario'];
+      
+      AppLogger.storage('Guardando access_token...', tag: _tag);
       await prefs.setString('access_token', data['access_token'] ?? '');
+      
+      AppLogger.storage('Guardando token_type...', tag: _tag);
       await prefs.setString('token_type', data['token_type'] ?? 'bearer');
-      await prefs.setString('user_id', data['usuario']['id_usuario'].toString());
-      await prefs.setString('user_rol', data['usuario']['id_rol'].toString());
-      await prefs.setString('user_name', data['usuario']['nombre'] ?? 'Usuario');
-      await prefs.setString('user_email', data['usuario']['email'] ?? '');
-      await prefs.setBool('user_activo', data['usuario']['activo'] ?? false);
+      
+      AppLogger.storage('Guardando user_id...', tag: _tag);
+      await prefs.setString('user_id', usuario['id_usuario'].toString());
+      
+      AppLogger.storage('Guardando user_rol...', tag: _tag);
+      await prefs.setString('user_rol', usuario['id_rol'].toString());
+      
+      AppLogger.storage('Guardando user_name...', tag: _tag);
+      await prefs.setString('user_name', usuario['nombre'] ?? 'Usuario');
+      
+      AppLogger.storage('Guardando user_email...', tag: _tag);
+      await prefs.setString('user_email', usuario['email'] ?? '');
+      
+      AppLogger.storage('Guardando user_activo...', tag: _tag);
+      await prefs.setBool('user_activo', usuario['activo'] ?? false);
+      
+      AppLogger.storage('Guardando login_time...', tag: _tag);
       await prefs.setString('login_time', DateTime.now().toIso8601String());
       
-      debugPrint('✅ Datos guardados en SharedPreferences');
+      AppLogger.table('Usuario Guardado', {
+        'ID': usuario['id_usuario'].toString(),
+        'Email': usuario['email'] ?? 'N/A',
+        'Nombre': usuario['nombre'] ?? 'N/A',
+        'Rol': usuario['id_rol'].toString(),
+        'Activo': usuario['activo'].toString(),
+      }, tag: _tag);
+      
+      AppLogger.success('Todos los datos guardados correctamente', tag: _tag);
     } catch (e) {
-      debugPrint('❌ Error al guardar datos: $e');
+      AppLogger.error(
+        'Error crítico al guardar datos: $e',
+        tag: _tag,
+        error: e,
+      );
       rethrow;
     }
   }
@@ -88,9 +212,17 @@ class AuthService {
   Future<String?> getToken() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      return prefs.getString('access_token');
+      final token = prefs.getString('access_token');
+      
+      if (token != null && token.isNotEmpty) {
+        AppLogger.debug('Token recuperado exitosamente', tag: _tag);
+        return token;
+      } else {
+        AppLogger.warning('No hay token guardado', tag: _tag);
+        return null;
+      }
     } catch (e) {
-      debugPrint('❌ Error getting token: $e');
+      AppLogger.error('Error al recuperar token', tag: _tag, error: e);
       return null;
     }
   }
@@ -99,9 +231,17 @@ class AuthService {
   Future<String?> getUserId() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      return prefs.getString('user_id');
+      final userId = prefs.getString('user_id');
+      
+      if (userId != null && userId.isNotEmpty) {
+        AppLogger.debug('User ID: $userId', tag: _tag);
+        return userId;
+      } else {
+        AppLogger.warning('No hay user_id guardado', tag: _tag);
+        return null;
+      }
     } catch (e) {
-      debugPrint('❌ Error getting user ID: $e');
+      AppLogger.error('Error getting user ID', tag: _tag, error: e);
       return null;
     }
   }
@@ -110,9 +250,17 @@ class AuthService {
   Future<String?> getUserRole() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      return prefs.getString('user_rol');
+      final role = prefs.getString('user_rol');
+      
+      if (role != null && role.isNotEmpty) {
+        AppLogger.debug('User Role: $role', tag: _tag);
+        return role;
+      } else {
+        AppLogger.warning('No hay user_rol guardado', tag: _tag);
+        return null;
+      }
     } catch (e) {
-      debugPrint('❌ Error getting user role: $e');
+      AppLogger.error('Error getting user role', tag: _tag, error: e);
       return null;
     }
   }
@@ -121,9 +269,17 @@ class AuthService {
   Future<String?> getUserName() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      return prefs.getString('user_name');
+      final name = prefs.getString('user_name');
+      
+      if (name != null && name.isNotEmpty) {
+        AppLogger.debug('User Name: $name', tag: _tag);
+        return name;
+      } else {
+        AppLogger.warning('No hay user_name guardado', tag: _tag);
+        return null;
+      }
     } catch (e) {
-      debugPrint('❌ Error getting user name: $e');
+      AppLogger.error('Error getting user name', tag: _tag, error: e);
       return null;
     }
   }
@@ -132,9 +288,17 @@ class AuthService {
   Future<String?> getUserEmail() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      return prefs.getString('user_email');
+      final email = prefs.getString('user_email');
+      
+      if (email != null && email.isNotEmpty) {
+        AppLogger.debug('User Email: $email', tag: _tag);
+        return email;
+      } else {
+        AppLogger.warning('No hay user_email guardado', tag: _tag);
+        return null;
+      }
     } catch (e) {
-      debugPrint('❌ Error getting user email: $e');
+      AppLogger.error('Error getting user email', tag: _tag, error: e);
       return null;
     }
   }
@@ -143,28 +307,51 @@ class AuthService {
   Future<bool> isAuthenticated() async {
     try {
       final token = await getToken();
-      return token != null && token.isNotEmpty;
+      final isAuth = token != null && token.isNotEmpty;
+      
+      AppLogger.debug('Verificación de autenticación: ${isAuth ? 'Autenticado' : 'No autenticado'}', tag: _tag);
+      
+      return isAuth;
     } catch (e) {
-      debugPrint('❌ Error checking authentication: $e');
+      AppLogger.error('Error checking authentication', tag: _tag, error: e);
       return false;
     }
   }
 
   // Logout and clear all data
   Future<void> logout() async {
+    AppLogger.info('Iniciando proceso de logout...', tag: _tag);
+    
     try {
       final prefs = await SharedPreferences.getInstance();
+      
+      AppLogger.storage('Limpiando access_token...', tag: _tag);
       await prefs.remove('access_token');
+      
+      AppLogger.storage('Limpiando token_type...', tag: _tag);
       await prefs.remove('token_type');
+      
+      AppLogger.storage('Limpiando user_id...', tag: _tag);
       await prefs.remove('user_id');
+      
+      AppLogger.storage('Limpiando user_rol...', tag: _tag);
       await prefs.remove('user_rol');
+      
+      AppLogger.storage('Limpiando user_name...', tag: _tag);
       await prefs.remove('user_name');
+      
+      AppLogger.storage('Limpiando user_email...', tag: _tag);
       await prefs.remove('user_email');
+      
+      AppLogger.storage('Limpiando user_activo...', tag: _tag);
       await prefs.remove('user_activo');
+      
+      AppLogger.storage('Limpiando login_time...', tag: _tag);
       await prefs.remove('login_time');
-      debugPrint('✅ Logout completado, datos limpios');
+      
+      AppLogger.success('Logout completado y datos limpios', tag: _tag);
     } catch (e) {
-      debugPrint('❌ Error al hacer logout: $e');
+      AppLogger.error('Error al hacer logout', tag: _tag, error: e);
     }
   }
 
@@ -175,12 +362,17 @@ class AuthService {
     Map<String, dynamic>? body,
     Map<String, String>? headers,
   }) async {
+    AppLogger.debug('Preparando solicitud autenticada: $method $endpoint', tag: _tag);
+    
     try {
       final token = await getToken();
 
-      if (token == null) {
+      if (token == null || token.isEmpty) {
+        AppLogger.error('No hay token de autenticación disponible', tag: _tag);
         throw Exception('No authentication token found');
       }
+
+      AppLogger.debug('Token encontrado, longitud: ${token.length}', tag: _tag);
 
       final requestHeaders = {
         'Authorization': 'Bearer $token',
@@ -189,34 +381,67 @@ class AuthService {
       };
 
       final url = Uri.parse('$baseUrl$endpoint');
+      final startTime = DateTime.now();
 
-      debugPrint('📡 $method $endpoint');
+      AppLogger.httpRequest(
+        method,
+        url.toString(),
+        tag: _tag,
+        body: body,
+        headers: requestHeaders,
+      );
+
+      http.Response response;
 
       switch (method.toUpperCase()) {
         case 'GET':
-          return await http.get(url, headers: requestHeaders);
+          response = await http.get(url, headers: requestHeaders)
+              .timeout(const Duration(seconds: 30));
+          break;
         case 'POST':
-          return await http.post(
+          response = await http.post(
             url,
             headers: requestHeaders,
             body: body != null ? jsonEncode(body) : null,
-          );
+          ).timeout(const Duration(seconds: 30));
+          break;
         case 'PUT':
-          return await http.put(
+          response = await http.put(
             url,
             headers: requestHeaders,
             body: body != null ? jsonEncode(body) : null,
-          );
+          ).timeout(const Duration(seconds: 30));
+          break;
         case 'DELETE':
-          return await http.delete(
+          response = await http.delete(
             url,
             headers: requestHeaders,
-          );
+          ).timeout(const Duration(seconds: 30));
+          break;
         default:
           throw Exception('Unsupported HTTP method: $method');
       }
+
+      final duration = DateTime.now().difference(startTime);
+      
+      AppLogger.httpResponse(
+        method,
+        url.toString(),
+        response.statusCode,
+        tag: _tag,
+        duration: duration,
+        body: response.body.length > 200 
+          ? '${response.body.substring(0, 200)}...'
+          : response.body,
+      );
+
+      return response;
     } catch (e) {
-      debugPrint('❌ Error en authenticatedRequest: $e');
+      AppLogger.error(
+        'Error en solicitud autenticada',
+        tag: _tag,
+        error: e,
+      );
       rethrow;
     }
   }
