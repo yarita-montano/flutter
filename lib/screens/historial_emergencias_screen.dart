@@ -3,6 +3,8 @@ import '../services/incidente_service.dart';
 import '../models/incidente.dart';
 import '../models/candidato_asignacion.dart';
 import 'subir_evidencia_screen.dart';
+import 'mensajes_screen.dart';
+import 'tecnico_tracking_screen.dart';
 
 class HistorialEmergenciasScreen extends StatefulWidget {
   const HistorialEmergenciasScreen({super.key});
@@ -378,6 +380,47 @@ class _HistorialEmergenciasScreenState
                 onPressed: () => Navigator.pop(ctx),
                 child: const Text('Cerrar'),
               ),
+              if (inc.asignaciones != null && inc.asignaciones!.isNotEmpty)
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            MensajesScreen(idIncidente: inc.idIncidente),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.chat, size: 18),
+                  label: const Text('Mensajes'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue.shade700,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              if (inc.asignaciones != null && inc.asignaciones!.isNotEmpty)
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TecnicoTrackingScreen(
+                          idIncidente: inc.idIncidente,
+                          clienteLat: inc.latitud,
+                          clienteLng: inc.longitud,
+                        ),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.map, size: 18),
+                  label: const Text('Ver técnico'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange.shade700,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
               ElevatedButton.icon(
                 onPressed: () {
                   Navigator.pop(ctx);

@@ -1,3 +1,4 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/login_screen.dart';
@@ -10,29 +11,34 @@ import 'screens/perfil_screen.dart';
 import 'screens/reportar_emergencia_screen.dart';
 import 'screens/historial_emergencias_screen.dart';
 import 'screens/asignacion_detalle_screen.dart';
+import 'screens/mensajes_screen.dart';
 import 'services/auth_service.dart';
 import 'services/tecnico_auth_service.dart';
+import 'services/notification_service.dart';
 import 'utils/app_logger.dart';
 
 void main() async {
-  // Inicializar WidgetsBinding para operaciones async en main
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   AppLogger.separator(title: 'INICIANDO APLICACIÓN');
-  
-  // Pre-inicializar SharedPreferences
+
+  // SharedPreferences
   try {
-    AppLogger.info('Inicializando SharedPreferences...', tag: 'MAIN');
     await SharedPreferences.getInstance();
-    AppLogger.success('SharedPreferences inicializado correctamente', tag: 'MAIN');
+    AppLogger.success('SharedPreferences inicializado', tag: 'MAIN');
   } catch (e) {
-    AppLogger.error(
-      'Error al inicializar SharedPreferences',
-      tag: 'MAIN',
-      error: e,
-    );
+    AppLogger.error('Error SharedPreferences', tag: 'MAIN', error: e);
   }
-  
+
+  // Firebase
+  try {
+    await Firebase.initializeApp();
+    await NotificationService().init();
+    AppLogger.success('Firebase inicializado', tag: 'MAIN');
+  } catch (e) {
+    AppLogger.error('Firebase no disponible (sin google-services.json?)', tag: 'MAIN', error: e);
+  }
+
   AppLogger.info('Iniciando aplicación...', tag: 'MAIN');
   runApp(const MyApp());
 }
@@ -65,6 +71,10 @@ class MyApp extends StatelessWidget {
         '/asignacion-detalle': (context) {
           final id = ModalRoute.of(context)?.settings.arguments as int? ?? 0;
           return AsignacionDetalleScreen(idAsignacion: id);
+        },
+        '/mensajes': (context) {
+          final id = ModalRoute.of(context)?.settings.arguments as int? ?? 0;
+          return MensajesScreen(idIncidente: id);
         },
       },
     );

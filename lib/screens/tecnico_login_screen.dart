@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/notification_service.dart';
 import '../services/tecnico_auth_service.dart';
 
 class TecnicoLoginScreen extends StatefulWidget {
@@ -11,6 +12,7 @@ class TecnicoLoginScreen extends StatefulWidget {
 
 class _TecnicoLoginScreenState extends State<TecnicoLoginScreen> {
   final TecnicoAuthService _authService = TecnicoAuthService();
+  final NotificationService _notificationService = NotificationService();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
@@ -44,6 +46,8 @@ class _TecnicoLoginScreenState extends State<TecnicoLoginScreen> {
     try {
       final response = await _authService.loginTecnico(email, password);
       debugPrint('[TecnicoLogin] Tecnico: ${response.usuario.nombre}');
+
+      await _notificationService.syncTokenWithBackend();
 
       if (!mounted) return;
       Navigator.of(context).pushReplacementNamed('/tecnico-dashboard');

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -6,6 +7,7 @@ import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
 import '../models/asignacion_response.dart';
+import '../models/evidencia.dart';
 import 'auth_service.dart';
 import 'tecnico_auth_service.dart';
 
@@ -281,5 +283,91 @@ class TecnicoAsignacionesService {
       costoEstimado: costoEstimado,
       resumenTrabajo: resumenTrabajo,
     );
+  }
+
+  // ── UBICACIÓN EN TIEMPO REAL ─────────────────────────────────────────────
+
+  Timer? _locationTimer;
+
+  /// Envía la ubicación actual del técnico al backend.
+  Future<void> actualizarUbicacion() async {
+    try {
+      final position = await _getCurrentLocation();
+      final token = await _resolverTokenTecnico();
+
+      final response = await http
+          .put(
+            Uri.parse('$_baseUrl/tecnicos/mi-ubicacion'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({
+              'latitud': position.latitude,
+              'longitud': position.longitude,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      debugPrint(
+        '[TecnicoAsignacionesService] ubicacion actualizada '
+        '${position.latitude},${position.longitude} status=${response.statusCode}',
+      );
+    } catch (e) {
+      debugPrint('[TecnicoAsignacionesService] actualizarUbicacion ERROR: $e');
+    }
+  }
+
+  /// Inicia el envío periódico de ubicación (cada 30 segundos).
+  void iniciarSeguimientoUbicacion() {
+    _locationTimer?.cancel();
+    actualizarUbicacion(); // envío inmediato
+    _locationTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => actualizarUbicacion(),
+    );
+    debugPrint('[TecnicoAsignacionesService] seguimiento GPS iniciado (cada 30s)');
+  }
+
+  /// Detiene el envío periódico de ubicación.
+  void detenerSeguimientoUbicacion() {
+    _locationTimer?.cancel();
+    _locationTimer = null;
+    debugPrint('[TecnicoAsignacionesService] seguimiento GPS detenido');
+  }
+
+  // ── EVIDENCIAS ───────────────────────────────────────────────────────────
+
+  /// Obtiene las evidencias (fotos, audio, texto) del incidente de la asignación.
+  Future<List<Evidencia>> obtenerEvidencias(int idAsignacion) async {
+    try {
+      final token = await _resolverTokenTecnico();
+
+      final response = await http
+          .get(
+            Uri.parse('$_baseUrl/tecnicos/mis-asignaciones/$idAsignacion/evidencias'),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+          )
+          .timeout(const Duration(seconds: 15));
+
+      debugPrint(
+        '[TecnicoAsignacionesService] obtenerEvidencias '
+        'status=${response.statusCode}',
+      );
+
+      if (response.statusCode == 200) {
+        final lista = jsonDecode(response.body) as List<dynamic>;
+        return lista
+            .map((e) => Evidencia.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      debugPrint('[TecnicoAsignacionesService] obtenerEvidencias ERROR: $e');
+      return [];
+    }
   }
 }

@@ -169,6 +169,54 @@ class IncidenteService {
     }
   }
 
+  /// 🔧 OBTENER UBICACIÓN DEL TÉCNICO ASIGNADO
+  Future<Map<String, dynamic>> obtenerUbicacionTecnico(int idIncidente) async {
+    try {
+      final token = await _getToken();
+      if (token == null) {
+        return {'success': false, 'error': 'No autenticado'};
+      }
+
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/incidencias/$idIncidente/tecnico-ubicacion'),
+            headers: {'Authorization': 'Bearer $token'},
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        return {
+          'success': true,
+          'data': data,
+        };
+      }
+
+      if (response.statusCode == 401) {
+        return {
+          'success': false,
+          'error': 'Sesión expirada',
+          'code': 'AUTH_EXPIRED',
+        };
+      }
+
+      if (response.statusCode == 404) {
+        final body = jsonDecode(response.body);
+        return {
+          'success': false,
+          'error': body['detail'] ?? 'Ubicación no disponible',
+        };
+      }
+
+      return {
+        'success': false,
+        'error': 'Error al obtener ubicación del técnico',
+      };
+    } catch (e) {
+      return {'success': false, 'error': 'Error: $e'};
+    }
+  }
+
   /// 📷 SUBIR EVIDENCIA (imagen / audio)
   Future<Map<String, dynamic>> subirEvidencia({
     required int idIncidente,

@@ -1,3 +1,5 @@
+import 'evidencia.dart';
+
 class AsignacionResponse {
   final int idAsignacion;
   final int idIncidente;
@@ -51,6 +53,7 @@ class IncidenteResponse {
   final String prioridad;
   final Map<String, dynamic>? usuario;
   final Map<String, dynamic>? vehiculo;
+  final List<Evidencia> evidencias;
 
   IncidenteResponse({
     required this.idIncidente,
@@ -62,9 +65,11 @@ class IncidenteResponse {
     required this.prioridad,
     this.usuario,
     this.vehiculo,
+    this.evidencias = const [],
   });
 
   factory IncidenteResponse.fromJson(Map<String, dynamic> json) {
+    final evidenciasJson = json['evidencias'] as List<dynamic>? ?? [];
     return IncidenteResponse(
       idIncidente: (json['id_incidente'] ?? 0) as int,
       descripcionUsuario: (json['descripcion_usuario'] ?? '') as String,
@@ -79,6 +84,9 @@ class IncidenteResponse {
               as String,
       usuario: json['usuario'] as Map<String, dynamic>?,
       vehiculo: json['vehiculo'] as Map<String, dynamic>?,
+      evidencias: evidenciasJson
+          .map((e) => Evidencia.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 }

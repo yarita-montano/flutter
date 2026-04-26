@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 
 import '../models/asignacion_response.dart';
+import '../models/evidencia.dart';
 import '../services/auth_service.dart';
 import '../services/tecnico_asignaciones_service.dart';
 import '../services/tecnico_auth_service.dart';
@@ -22,6 +23,8 @@ class _TecnicoDashboardScreenState extends State<TecnicoDashboardScreen> {
   IncidenteResponse? _incidente;
   bool _isLoading = true;
   String? _errorMessage;
+  List<Evidencia> _evidencias = [];
+  bool _loadingEvidencias = false;
 
   void _log(String message) {
     debugPrint('[TEC DASH] $message');
@@ -32,6 +35,12 @@ class _TecnicoDashboardScreenState extends State<TecnicoDashboardScreen> {
     super.initState();
     _log('initState -> dashboard tecnico inicializado');
     _loadAsignacion();
+  }
+
+  @override
+  void dispose() {
+    _tecnicoService.detenerSeguimientoUbicacion();
+    super.dispose();
   }
 
   Future<void> _loadAsignacion() async {
@@ -73,6 +82,16 @@ class _TecnicoDashboardScreenState extends State<TecnicoDashboardScreen> {
         _isLoading = false;
       });
 
+      // GPS tiempo real: solo activo cuando está en_camino
+      if (asig.estadoAsignacion == 'en_camino') {
+        _tecnicoService.iniciarSeguimientoUbicacion();
+      } else {
+        _tecnicoService.detenerSeguimientoUbicacion();
+      }
+
+      // Cargar evidencias del incidente
+      _cargarEvidencias(asig.idAsignacion);
+
       _log('_loadAsignacion -> FIN OK');
     } catch (e, st) {
       _log('_loadAsignacion -> ERROR: $e');
@@ -102,6 +121,20 @@ class _TecnicoDashboardScreenState extends State<TecnicoDashboardScreen> {
     return 'Error: $error';
   }
 
+  Future<void> _cargarEvidencias(int idAsignacion) async {
+    setState(() => _loadingEvidencias = true);
+    final lista = await _tecnicoService.obtenerEvidencias(idAsignacion);
+    // También incluir las que ya vienen embebidas en el incidente
+    final embebidas = _asignacion?.incidente.evidencias ?? [];
+    final todas = [...embebidas];
+    for (final e in lista) {
+      if (!todas.any((x) => x.idEvidencia == e.idEvidencia)) {
+        todas.add(e);
+      }
+    }
+    if (mounted) setState(() { _evidencias = todas; _loadingEvidencias = false; });
+  }
+
   Future<void> _handleIniciarViaje() async {
     if (_asignacion == null) return;
     _log('_handleIniciarViaje -> INICIO idAsignacion=${_asignacion!.idAsignacion} estado=${_asignacion!.estadoAsignacion}');
@@ -110,10 +143,11 @@ class _TecnicoDashboardScreenState extends State<TecnicoDashboardScreen> {
       final updated = await _tecnicoService.iniciarViaje(_asignacion!.idAsignacion);
       _log('_handleIniciarViaje -> OK nuevoEstado=${updated.estadoAsignacion}');
       setState(() => _asignacion = updated);
+      _tecnicoService.iniciarSeguimientoUbicacion();
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Viaje iniciado. Dirigete al cliente.')),
+        const SnackBar(content: Text('Viaje iniciado. Compartiendo ubicación en tiempo real.')),
       );
     } catch (e, st) {
       _log('_handleIniciarViaje -> ERROR: $e');
@@ -186,6 +220,7 @@ class _TecnicoDashboardScreenState extends State<TecnicoDashboardScreen> {
                   );
                   _log('_handleCompletar -> OK nuevoEstado=${updated.estadoAsignacion}');
                   setState(() => _asignacion = updated);
+                  _tecnicoService.detenerSeguimientoUbicacion();
 
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -306,6 +341,96 @@ class _TecnicoDashboardScreenState extends State<TecnicoDashboardScreen> {
       default:
         return Text('Estado desconocido: ${_asignacion!.estadoAsignacion}');
     }
+  }
+
+  Widget _buildEvidencias() {
+    if (_loadingEvidencias) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      );
+    }
+
+    if (_evidencias.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 4),
+        child: Text(
+          'El cliente no subió evidencias.',
+          style: TextStyle(color: Colors.grey),
+        ),
+      );
+    }
+
+    return Column(
+      children: _evidencias.map((e) => _buildEvidenciaItem(e)).toList(),
+    );
+  }
+
+  Widget _buildEvidenciaItem(Evidencia ev) {
+    if (ev.esImagen) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.network(
+            ev.urlArchivo,
+            height: 180,
+            width: double.infinity,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Container(
+              height: 80,
+              color: Colors.grey[200],
+              child: const Center(child: Icon(Icons.broken_image, color: Colors.grey)),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (ev.esAudio) {
+      return ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const CircleAvatar(
+          backgroundColor: Colors.orange,
+          child: Icon(Icons.mic, color: Colors.white),
+        ),
+        title: const Text('Audio del cliente'),
+        subtitle: ev.transcripcionAudio != null
+            ? Text(ev.transcripcionAudio!, maxLines: 2, overflow: TextOverflow.ellipsis)
+            : null,
+      );
+    }
+
+    // Texto / descripción IA
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: const CircleAvatar(
+        backgroundColor: Colors.blue,
+        child: Icon(Icons.description, color: Colors.white),
+      ),
+      title: const Text('Descripción adicional'),
+      subtitle: ev.descripcionIa != null ? Text(ev.descripcionIa!) : null,
+    );
+  }
+
+  Widget _buildGpsIndicator() {
+    if (_asignacion?.estadoAsignacion != 'en_camino') return const SizedBox.shrink();
+    return Card(
+      color: Colors.blue[50],
+      child: const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          children: [
+            Icon(Icons.location_on, color: Colors.blue, size: 18),
+            SizedBox(width: 8),
+            Text(
+              'Compartiendo ubicación en tiempo real',
+              style: TextStyle(color: Colors.blue, fontSize: 13),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -477,6 +602,17 @@ class _TecnicoDashboardScreenState extends State<TecnicoDashboardScreen> {
                       ],
                     ],
                   ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              _buildGpsIndicator(),
+              const SizedBox(height: 16),
+              Text('Evidencias del Cliente', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 8),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: _buildEvidencias(),
                 ),
               ),
               const SizedBox(height: 24),

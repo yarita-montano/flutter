@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../services/notification_service.dart';
 import '../utils/app_logger.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -11,6 +12,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final AuthService _authService = AuthService();
+  final NotificationService _notificationService = NotificationService();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
@@ -67,6 +69,9 @@ class _LoginScreenState extends State<LoginScreen> {
     if (result['success']) {
       final userData = result['data']['usuario'];
       final userRole = userData['id_rol'].toString();
+
+      // Reintento explícito de registro de token FCM tras login exitoso.
+      await _notificationService.syncTokenWithBackend();
 
       AppLogger.info('Login exitoso, rol: $userRole', tag: _tag);
 
@@ -134,6 +139,9 @@ class _LoginScreenState extends State<LoginScreen> {
     if (result['success']) {
       final userData = result['data']['usuario'];
       final userRole = userData['id_rol'].toString();
+
+      // Reintento explícito de registro de token FCM tras login exitoso.
+      await _notificationService.syncTokenWithBackend();
 
       AppLogger.success('Auto-login exitoso', tag: _tag);
 

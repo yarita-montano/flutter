@@ -7,7 +7,7 @@ class ApiConfig {
 
   // Dispositivo físico: IP LAN de tu PC (la misma red Wi-Fi).
   // Cámbiala si tu router asigna otra IP.
-  static const String _deviceUrl = 'http://192.168.1.20:8000';
+  static const String _deviceUrl = 'http://192.168.1.102:8000';
 
   static const String baseUrl = isEmulator ? _emulatorUrl : _deviceUrl;
 }
